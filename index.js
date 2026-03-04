@@ -15,8 +15,7 @@ connectDB();
 const allowedOrigins = [
   'http://localhost:5173', // Local development
   'http://localhost:3000', // Alternative local port
-  process.env.FRONTEND_URL, // Production frontend URL
-  'https://your-frontend-app.vercel.app' // Replace with your actual frontend URL
+  process.env.FRONTEND_URL, // Production frontend URL from Vercel env var
 ].filter(Boolean);
 
 app.use(cors({
