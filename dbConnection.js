@@ -44,47 +44,64 @@ const connectDB = async () => {
       console.log('✅ Mongoose connected to MongoDB Atlas');
       isConnected = true;
     });
-    });
     
     mongoose.connection.on('error', (err) => {
       console.error('❌ Mongoose connection error:', err);
-      // Don't exit on errors in production
-      if (process.env.NODE_ENV !== 'production') {
-        process.exit(1);
-      }
+      isConnected = false;
+      isConnecting = false;
+      // Don't exit in serverless environment
     });
     
     mongoose.connection.on('disconnected', () => {
       console.log('⚠️ Mongoose disconnected from MongoDB Atlas');
+      isConnected = false;
     });
     
     // Handle reconnection
     mongoose.connection.on('reconnected', () => {
       console.log('🔄 Mongoose reconnected to MongoDB Atlas');
+      isConnected = true;
     });
     
-    mongoose.connection.on('disconnected', () => {
-      console.log('⚠️ Mongoose disconnected from MongoDB');
-    });
-    
-    // Graceful close on app termination
-    process.on('SIGINT', async () => {
-      await mongoose.connection.close();
-      console.log('🔌 MongoDB connection closed through app termination');
-      process.exit(0);
-    });
+    return conn;
     
   } catch (error) {
-    console.error("❌ MongoDB connection failed:", error.message);
-    console.error("🔍 Connection string:", process.env.MONGO_URI ? "Provided" : "Missing");
+    isConnecting = false;
+    isConnected = false;
     
-    // In development, exit on connection failure
-    // In production, let the app continue and show error in health check
-    if (process.env.NODE_ENV !== 'production') {
-      console.log("💡 Make sure your MongoDB Atlas cluster is running and IP is whitelisted");
-      process.exit(1);
+    console.error("❌ MongoDB Atlas connection failed:", error.message);
+    console.error("🔍 Connection string provided:", process.env.MONGO_URI ? "Yes" : "No");
+    
+    // Enhanced error logging for Atlas
+    if (error.message.includes('authentication')) {
+      console.error("🔐 Authentication failed - check username/password");
+    } else if (error.message.includes('network')) {
+      console.error("🌐 Network error - check internet connection or firewall");
+    } else if (error.message.includes('timeout')) {
+      console.error("⏱️ Connection timeout - check Atlas cluster status");
     }
+    
+    // In serverless, don't exit - let the function continue and show error in health check
+    console.log("⚠️ Serverless function will continue without database connection");
+    
+    // Return a mock connection object to prevent crashes
+    return {
+      connection: {
+        readyState: 0,
+        host: 'disconnected',
+        name: 'unavailable'
+      }
+    };
   }
 };
 
-module.exports = connectDB;
+// Graceful shutdown helper
+const disconnectDB = async () => {
+  if (isConnected) {
+    await mongoose.connection.close();
+    isConnected = false;
+    console.log('🔌 MongoDB connection closed');
+  }
+};
+
+module.exports = { connectDB, disconnectDB };
