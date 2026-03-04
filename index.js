@@ -10,19 +10,106 @@ const jwt = require('jsonwebtoken');
 
 require('dotenv').config();
 
-// Test database connection immediately for debugging
+// Store startup test results
+let startupTestResults = {
+  timestamp: new Date().toISOString(),
+  mongooseTest: { status: 'pending', message: 'Test not completed', error: null, duration: null },
+  nativeTest: { status: 'pending', message: 'Test not completed', error: null, duration: null }
+};
+
+// Run automated database tests on startup
 (async () => {
   console.log('🚀 Starting server...');
   console.log('🔗 Environment variables loaded');
   console.log('📍 MONGO_URI exists:', !!process.env.MONGO_URI);
   
-  // Test connection on startup
-  const connected = await testConnection();
-  if (connected) {
-    console.log('✅ Database ready!');
-  } else {
-    console.log('❌ Database connection failed, but server will continue');
+  // Run Mongoose test
+  console.log('🧪 Running Mongoose connection test...');
+  const mongooseStart = Date.now();
+  try {
+    const mongooseResult = await testConnection();
+    const mongooseDuration = Date.now() - mongooseStart;
+    
+    if (mongooseResult) {
+      startupTestResults.mongooseTest = {
+        status: 'success',
+        message: 'Mongoose connection successful',
+        error: null,
+        duration: mongooseDuration
+      };
+      console.log('✅ Mongoose test passed in', mongooseDuration, 'ms');
+    } else {
+      startupTestResults.mongooseTest = {
+        status: 'failed',
+        message: 'Mongoose connection failed',
+        error: 'Connection returned false',
+        duration: mongooseDuration
+      };
+      console.log('❌ Mongoose test failed in', mongooseDuration, 'ms');
+    }
+  } catch (error) {
+    const mongooseDuration = Date.now() - mongooseStart;
+    startupTestResults.mongooseTest = {
+      status: 'error',
+      message: 'Mongoose connection error',
+      error: error.message,
+      duration: mongooseDuration
+    };
+    console.log('❌ Mongoose test error:', error.message);
   }
+  
+  // Run native MongoDB test
+  console.log('🧪 Running native MongoDB driver test...');
+  const nativeStart = Date.now();
+  try {
+    const nativeResult = await testMongoDBConnection();
+    const nativeDuration = Date.now() - nativeStart;
+    
+    if (nativeResult.success) {
+      startupTestResults.nativeTest = {
+        status: 'success',
+        message: 'Native MongoDB driver connection successful',
+        error: null,
+        duration: nativeDuration,
+        details: nativeResult
+      };
+      console.log('✅ Native MongoDB test passed in', nativeDuration, 'ms');
+    } else {
+      startupTestResults.nativeTest = {
+        status: 'failed',
+        message: 'Native MongoDB driver connection failed',
+        error: nativeResult.error || 'Connection failed',
+        duration: nativeDuration,
+        details: nativeResult
+      };
+      console.log('❌ Native MongoDB test failed in', nativeDuration, 'ms');
+    }
+  } catch (error) {
+    const nativeDuration = Date.now() - nativeStart;
+    startupTestResults.nativeTest = {
+      status: 'error',
+      message: 'Native MongoDB driver test error',
+      error: error.message,
+      duration: nativeDuration
+    };
+    console.log('❌ Native MongoDB test error:', error.message);
+  }
+  
+  // Summary
+  const mongooseOk = startupTestResults.mongooseTest.status === 'success';
+  const nativeOk = startupTestResults.nativeTest.status === 'success';
+  
+  if (mongooseOk && nativeOk) {
+    console.log('🎉 All database tests passed! Both Mongoose and native driver are working.');
+  } else if (nativeOk && !mongooseOk) {
+    console.log('⚠️  Native driver works but Mongoose has issues. Check Mongoose configuration.');
+  } else if (mongooseOk && !nativeOk) {
+    console.log('⚠️  Mongoose works but native driver has issues. Unusual but server will continue.');
+  } else {
+    console.log('❌ Both database tests failed. Check MongoDB Atlas connectivity and credentials.');
+  }
+  
+  console.log('🏃 Server startup complete. Test results available on homepage.');
 })();
 
 // Configure CORS to allow requests from frontend
@@ -273,6 +360,32 @@ app.get('/', async (req, res) => {
         <p>Server is running successfully</p>
         <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</p>
         <p><strong>Uptime:</strong> ${Math.floor(process.uptime())} seconds</p>
+      </div>
+      
+      <div class="status info">
+        <h2>🧪 Startup Database Tests</h2>
+        <p><strong>Test Time:</strong> ${new Date(startupTestResults.timestamp).toLocaleString()}</p>
+        
+        <div style="margin: 15px 0; padding: 10px; border-radius: 5px; background: ${startupTestResults.mongooseTest.status === 'success' ? '#d4edda' : startupTestResults.mongooseTest.status === 'pending' ? '#fff3cd' : '#f8d7da'};">
+          <strong>🍃 Mongoose Test:</strong> 
+          ${startupTestResults.mongooseTest.status === 'success' ? '✅' : startupTestResults.mongooseTest.status === 'pending' ? '⏳' : '❌'} 
+          ${startupTestResults.mongooseTest.message}
+          ${startupTestResults.mongooseTest.duration ? ` (${startupTestResults.mongooseTest.duration}ms)` : ''}
+          ${startupTestResults.mongooseTest.error ? `<br><small style="color: #721c24;">Error: ${startupTestResults.mongooseTest.error}</small>` : ''}
+        </div>
+        
+        <div style="margin: 15px 0; padding: 10px; border-radius: 5px; background: ${startupTestResults.nativeTest.status === 'success' ? '#d4edda' : startupTestResults.nativeTest.status === 'pending' ? '#fff3cd' : '#f8d7da'};">
+          <strong>🔗 Native MongoDB Test:</strong> 
+          ${startupTestResults.nativeTest.status === 'success' ? '✅' : startupTestResults.nativeTest.status === 'pending' ? '⏳' : '❌'} 
+          ${startupTestResults.nativeTest.message}
+          ${startupTestResults.nativeTest.duration ? ` (${startupTestResults.nativeTest.duration}ms)` : ''}
+          ${startupTestResults.nativeTest.error ? `<br><small style="color: #721c24;">Error: ${startupTestResults.nativeTest.error}</small>` : ''}
+        </div>
+        
+        <details style="margin-top: 10px;">
+          <summary style="cursor: pointer;">📊 Full Test Results</summary>
+          <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; margin-top: 10px; font-size: 12px; overflow-x: auto;">${JSON.stringify(startupTestResults, null, 2)}</pre>
+        </details>
       </div>
       
       <h2>📡 Available Endpoints:</h2>
