@@ -4,21 +4,25 @@ const mongoose = require('mongoose');
 const app = express();
 const quiz = require('./router/quizRouter');
 const user = require('./router/userRouter');
-const { connectDB } = require('./dbConnection');
+const { connectDB, getConnectionStatus, testConnection } = require('./dbConnection');
 const jwt = require('jsonwebtoken');
 
 require('dotenv').config();
 
-// Initialize database connection lazily
-let dbConnectionPromise = null;
-
-// Lazy database connection for serverless
-const ensureDBConnection = async () => {
-  if (!dbConnectionPromise) {
-    dbConnectionPromise = connectDB();
+// Test database connection immediately for debugging
+(async () => {
+  console.log('🚀 Starting server...');
+  console.log('🔗 Environment variables loaded');
+  console.log('📍 MONGO_URI exists:', !!process.env.MONGO_URI);
+  
+  // Test connection on startup
+  const connected = await testConnection();
+  if (connected) {
+    console.log('✅ Database ready!');
+  } else {
+    console.log('❌ Database connection failed, but server will continue');
   }
-  return dbConnectionPromise;
-};
+})();
 
 // Configure CORS to allow requests from frontend
 const allowedOrigins = [
@@ -41,15 +45,22 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Middleware to ensure database connection for protected routes
+// Database connection middleware
 const dbMiddleware = async (req, res, next) => {
   try {
-    await ensureDBConnection();
+    console.log('🔌 Ensuring database connection...');
+    await connectDB();
+    console.log('✅ Database connection ready for request');
     next();
   } catch (error) {
-    console.error('Database middleware error:', error);
-    // Continue anyway - let individual routes handle DB errors
-    next();
+    console.error('❌ Database middleware error:', error.message);
+    // Return error response for database issues
+    res.status(503).json({
+      error: 'Database Unavailable',
+      message: 'Cannot connect to database',
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 };
 
@@ -60,7 +71,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/quizzes', dbMiddleware, quiz);
 app.use('/users', dbMiddleware, user);
 
-// Health check endpoint for database status
+// Enhanced health check endpoint
 app.get('/health', async (req, res) => {
   const healthCheck = {
     timestamp: new Date().toISOString(),
@@ -68,7 +79,8 @@ app.get('/health', async (req, res) => {
     services: {
       database: {
         status: 'unknown',
-        message: ''
+        message: '',
+        details: {}
       },
       server: {
         status: 'running',
@@ -79,38 +91,93 @@ app.get('/health', async (req, res) => {
   };
 
   try {
-    // Try to ensure DB connection
-    await ensureDBConnection();
+    // Get detailed connection status
+    const dbStatus = getConnectionStatus();
+    console.log('📊 Database status check:', dbStatus);
     
-    if (mongoose.connection.readyState === 1) {
+    // Try to ensure connection
+    await connectDB();
+    
+    const readyState = mongoose.connection.readyState;
+    healthCheck.services.database.details = {
+      readyState,
+      isConnected: dbStatus.isConnected,
+      isConnecting: dbStatus.isConnecting,
+      host: dbStatus.host || 'unknown',
+      name: dbStatus.name || 'unknown',
+      error: dbStatus.error?.message || null
+    };
+    
+    if (readyState === 1) {
       healthCheck.services.database.status = 'connected';
       healthCheck.services.database.message = 'Database connection is healthy';
-    } else if (mongoose.connection.readyState === 2) {
+    } else if (readyState === 2) {
       healthCheck.services.database.status = 'connecting';
       healthCheck.services.database.message = 'Database is connecting';
+      healthCheck.status = 'PARTIAL';
     } else {
       healthCheck.services.database.status = 'disconnected';
       healthCheck.services.database.message = 'Database is not connected';
-      healthCheck.status = 'PARTIAL';
+      healthCheck.status = 'ERROR';
     }
   } catch (error) {
+    console.error('❌ Health check database error:', error.message);
     healthCheck.services.database.status = 'error';
     healthCheck.services.database.message = error.message;
-    healthCheck.status = 'PARTIAL';
+    healthCheck.services.database.details.error = error.message;
+    healthCheck.status = 'ERROR';
   }
 
-  const statusCode = healthCheck.status === 'OK' ? 200 : 206;
+  const statusCode = healthCheck.status === 'OK' ? 200 : healthCheck.status === 'PARTIAL' ? 206 : 503;
   res.status(statusCode).json(healthCheck);
 });
 
-// Root endpoint with database status
+// Test database connection endpoint
+app.get('/test-db', async (req, res) => {
+  console.log('🧪 Database connection test requested');
+  
+  try {
+    const result = await testConnection();
+    const status = getConnectionStatus();
+    
+    res.json({
+      success: result,
+      message: result ? 'Database connection successful!' : 'Database connection failed',
+      status: status,
+      timestamp: new Date().toISOString(),
+      mongooseState: {
+        readyState: mongoose.connection.readyState,
+        host: mongoose.connection.host,
+        name: mongoose.connection.name
+      }
+    });
+  } catch (error) {
+    console.error('🧪 Test endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Database test failed with error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Root endpoint with enhanced database status
 app.get('/', async (req, res) => {
   let dbStatus = 'Unknown';
   let dbMessage = '';
+  let dbDetails = {};
   
   try {
-    // Try to connect to database
-    await ensureDBConnection();
+    // Get current status without forcing connection
+    const currentStatus = getConnectionStatus();
+    dbDetails = currentStatus;
+    
+    // Try to connect if not connected
+    if (!currentStatus.isConnected) {
+      console.log('🔌 Attempting database connection...');
+      await connectDB();
+    }
     
     switch (mongoose.connection.readyState) {
       case 0:
@@ -119,11 +186,11 @@ app.get('/', async (req, res) => {
         break;
       case 1:
         dbStatus = '✅ Connected';
-        dbMessage = 'Database connection is healthy';
+        dbMessage = `Connected to ${mongoose.connection.host}/${mongoose.connection.name}`;
         break;
       case 2:
         dbStatus = '🔄 Connecting';
-        dbMessage = 'Database is connecting';
+        dbMessage = 'Database connection in progress';
         break;
       case 3:
         dbStatus = '⚠️ Disconnecting';
@@ -136,6 +203,7 @@ app.get('/', async (req, res) => {
   } catch (error) {
     dbStatus = '❌ Error';
     dbMessage = `Connection error: ${error.message}`;
+    dbDetails.error = error.message;
   }
 
   const response = `
@@ -160,6 +228,10 @@ app.get('/', async (req, res) => {
       <div class="status ${dbStatus.includes('✅') ? 'connected' : dbStatus.includes('❌') ? 'error' : dbStatus.includes('🔄') ? 'warning' : 'info'}">
         <h2>Database Status: ${dbStatus}</h2>
         <p>${dbMessage}</p>
+        <details style="margin-top: 10px;">
+          <summary style="cursor: pointer;">🔍 Database Details</summary>
+          <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; margin-top: 10px; font-size: 12px; overflow-x: auto;">${JSON.stringify(dbDetails, null, 2)}</pre>
+        </details>
       </div>
       
       <div class="status connected">
@@ -171,6 +243,7 @@ app.get('/', async (req, res) => {
       
       <h2>📡 Available Endpoints:</h2>
       <div class="endpoint">GET /health - Health check with detailed status</div>
+      <div class="endpoint">GET /test-db - Test database connection immediately</div>
       <div class="endpoint">POST /users/register - User registration</div>
       <div class="endpoint">POST /users/login - User login</div>
       <div class="endpoint">GET /quizzes - Get all quizzes</div>
