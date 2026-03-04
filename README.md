@@ -4,9 +4,13 @@
 
 When deploying to Vercel, you need to set these environment variables in your Vercel dashboard:
 
-1. **MONGO_URI** - Your MongoDB connection string (use MongoDB Atlas for production)
+1. **MONGO_URI** - Your MongoDB Atlas connection string
+   ```
+   mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/database_name?retryWrites=true&w=majority&appName=Cluster0
+   ```
 2. **JWT_SECRET** - A strong secret key for JWT tokens
-3. **FRONTEND_URL** - URL of your deployed frontend (e.g., https://your-frontend.vercel.app)
+3. **FRONTEND_URL** - URL of your deployed frontend (e.g., https://sdn-a4-frontend2.vercel.app)
+4. **NODE_ENV** - Set to `production`
 
 ## Local Development
 
@@ -16,13 +20,20 @@ When deploying to Vercel, you need to set these environment variables in your Ve
    npm install
    ```
 
-2. Create a `.env` file with:
+2. Copy environment template and configure:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Then edit `.env` with your actual values:
 
    ```
-   MONGO_URI=your_mongodb_connection_string
+   MONGO_URI=mongodb+srv://your_user:your_password@cluster0.xxxxx.mongodb.net/SDN_Assignment3?retryWrites=true&w=majority&appName=Cluster0
    JWT_SECRET=your_jwt_secret
    PORT=3000
    FRONTEND_URL=http://localhost:5173
+   NODE_ENV=development
    ```
 
 3. Run the development server:
@@ -32,15 +43,32 @@ When deploying to Vercel, you need to set these environment variables in your Ve
 
 ## Production Deployment
 
-1. **MongoDB Setup**:
-   - Create a MongoDB Atlas account
-   - Create a new cluster and database
-   - Get the connection string and add it to Vercel environment variables
+✅ **MongoDB Atlas Already Configured** - Your database is ready to use!
 
-2. **Vercel Deployment**:
-   - Connect your GitHub repository to Vercel
-   - Set the environment variables in Vercel dashboard
-   - Deploy
+1. **Update Vercel Environment Variables**:
+   Go to your Vercel project dashboard and update these variables:
+
+   ```
+   MONGO_URI=mongodb+srv://tranthanhtrung2015_db_user:eLD5saGINDW9e1Dy@cluster0.pwhlg9v.mongodb.net/SDN_Assignment3?retryWrites=true&w=majority&appName=Cluster0
+   JWT_SECRET=helloworasdasdknl124jljsfdsfasdld
+   FRONTEND_URL=https://sdn-a4-frontend2.vercel.app
+   NODE_ENV=production
+   ```
+
+2. **Deploy to Vercel**:
+
+   ```bash
+   git add .
+   git commit -m "Update MongoDB Atlas connection"
+   git push
+   ```
+
+   Vercel will automatically redeploy with the new database connection.
+
+3. **Verify Connection**:
+   - Visit your deployed backend URL
+   - Check the status page for database connection status
+   - Look for "✅ Connected" in the database status section
 
 ## API Endpoints
 
