@@ -5,6 +5,7 @@ const app = express();
 const quiz = require('./router/quizRouter');
 const user = require('./router/userRouter');
 const { connectDB, getConnectionStatus, testConnection } = require('./dbConnection');
+const { testMongoDBConnection } = require('./mongoTest');
 const jwt = require('jsonwebtoken');
 
 require('dotenv').config();
@@ -162,6 +163,39 @@ app.get('/test-db', async (req, res) => {
   }
 });
 
+// Test MongoDB native driver connection
+app.get('/test-native', async (req, res) => {
+  console.log('🧪 Native MongoDB driver test requested');
+  
+  try {
+    const result = await testMongoDBConnection();
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'MongoDB native driver connection successful!',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'MongoDB native driver connection failed',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('🧪 Native MongoDB test error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Native MongoDB test failed with error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Root endpoint with enhanced database status
 app.get('/', async (req, res) => {
   let dbStatus = 'Unknown';
@@ -243,7 +277,8 @@ app.get('/', async (req, res) => {
       
       <h2>📡 Available Endpoints:</h2>
       <div class="endpoint">GET /health - Health check with detailed status</div>
-      <div class="endpoint">GET /test-db - Test database connection immediately</div>
+      <div class="endpoint">GET /test-db - Test database connection (Mongoose)</div>
+      <div class="endpoint">GET /test-native - Test database connection (Native MongoDB driver)</div>
       <div class="endpoint">POST /users/register - User registration</div>
       <div class="endpoint">POST /users/login - User login</div>
       <div class="endpoint">GET /quizzes - Get all quizzes</div>
