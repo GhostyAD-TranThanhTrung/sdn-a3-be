@@ -70,6 +70,27 @@ When deploying to Vercel, you need to set these environment variables in your Ve
    - Check the status page for database connection status
    - Look for "✅ Connected" in the database status section
 
+   ```
+
+   Vercel will automatically redeploy with the new database connection.
+
+   ```
+
+4. **Verify Connection**:
+   - Visit your deployed backend URL
+   - Check the status page for database connection status
+   - # Look for "✅ Connected" in the database status section
+5. **MongoDB Setup**:
+   - Create a MongoDB Atlas account
+   - Create a new cluster and database
+   - Get the connection string and add it to Vercel environment variables
+
+6. **Vercel Deployment**:
+   - Connect your GitHub repository to Vercel
+   - Set the environment variables in Vercel dashboard
+   - Deploy
+     > > > > > > > c7bdaca1ae0396dde76ab249534d16487fb103c3
+
 ## API Endpoints
 
 - `GET /` - Server status page with database connection status (web interface)
