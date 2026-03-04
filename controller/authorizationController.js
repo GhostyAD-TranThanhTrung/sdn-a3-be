@@ -43,6 +43,9 @@ const login = async (req, res, next) => {
 const addUser = async (req, res, next) => {
     try {
         const userEnt = await UserService.createUser(req.body);
+        if(!userEnt) {
+              return    res.status(500).json({ message: "fail" })
+        }
         res.status(200).json({ message: "User successfully create", userEnt });
 
     } catch (e) {
