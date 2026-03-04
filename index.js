@@ -4,12 +4,21 @@ const mongoose = require('mongoose');
 const app = express();
 const quiz = require('./router/quizRouter');
 const user = require('./router/userRouter');
-const connectDB = require('./dbConnection')
-const jwt = require('jsonwebtoken')
+const { connectDB } = require('./dbConnection');
+const jwt = require('jsonwebtoken');
 
 require('dotenv').config();
 
-connectDB();
+// Initialize database connection lazily
+let dbConnectionPromise = null;
+
+// Lazy database connection for serverless
+const ensureDBConnection = async () => {
+  if (!dbConnectionPromise) {
+    dbConnectionPromise = connectDB();
+  }
+  return dbConnectionPromise;
+};
 
 // Configure CORS to allow requests from frontend
 const allowedOrigins = [
@@ -32,11 +41,24 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
+// Middleware to ensure database connection for protected routes
+const dbMiddleware = async (req, res, next) => {
+  try {
+    await ensureDBConnection();
+    next();
+  } catch (error) {
+    console.error('Database middleware error:', error);
+    // Continue anyway - let individual routes handle DB errors
+    next();
+  }
+};
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/quizzes', quiz);
-app.use('/users', user);
+// Apply database middleware to API routes
+app.use('/quizzes', dbMiddleware, quiz);
+app.use('/users', dbMiddleware, user);
 
 // Health check endpoint for database status
 app.get('/health', async (req, res) => {
@@ -57,6 +79,9 @@ app.get('/health', async (req, res) => {
   };
 
   try {
+    // Try to ensure DB connection
+    await ensureDBConnection();
+    
     if (mongoose.connection.readyState === 1) {
       healthCheck.services.database.status = 'connected';
       healthCheck.services.database.message = 'Database connection is healthy';
@@ -66,15 +91,15 @@ app.get('/health', async (req, res) => {
     } else {
       healthCheck.services.database.status = 'disconnected';
       healthCheck.services.database.message = 'Database is not connected';
-      healthCheck.status = 'ERROR';
+      healthCheck.status = 'PARTIAL';
     }
   } catch (error) {
     healthCheck.services.database.status = 'error';
     healthCheck.services.database.message = error.message;
-    healthCheck.status = 'ERROR';
+    healthCheck.status = 'PARTIAL';
   }
 
-  const statusCode = healthCheck.status === 'OK' ? 200 : 503;
+  const statusCode = healthCheck.status === 'OK' ? 200 : 206;
   res.status(statusCode).json(healthCheck);
 });
 
@@ -84,6 +109,9 @@ app.get('/', async (req, res) => {
   let dbMessage = '';
   
   try {
+    // Try to connect to database
+    await ensureDBConnection();
+    
     switch (mongoose.connection.readyState) {
       case 0:
         dbStatus = '❌ Disconnected';
@@ -107,7 +135,7 @@ app.get('/', async (req, res) => {
     }
   } catch (error) {
     dbStatus = '❌ Error';
-    dbMessage = error.message;
+    dbMessage = `Connection error: ${error.message}`;
   }
 
   const response = `

@@ -1,15 +1,40 @@
 const mongoose = require("mongoose");
 require('dotenv').config();
 
+// Track connection state
+let isConnecting = false;
+let isConnected = false;
+
 const connectDB = async () => {
   try {
+    // If already connected or connecting, skip
+    if (isConnected || isConnecting) {
+      return mongoose.connection;
+    }
+    
+    // Check if already connected via mongoose
+    if (mongoose.connection.readyState === 1) {
+      isConnected = true;
+      return mongoose.connection;
+    }
+    
+    isConnecting = true;
+    
     const conn = await mongoose.connect(process.env.MONGO_URI, {
-      // MongoDB Atlas connection options
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-      family: 4 // Use IPv4, skip trying IPv6
+      // MongoDB Atlas connection options optimized for serverless
+      maxPoolSize: 1, // Smaller pool for serverless
+      serverSelectionTimeoutMS: 3000, // Shorter timeout for serverless
+      socketTimeoutMS: 30000, // Shorter socket timeout
+      family: 4, // Use IPv4
+      // Serverless-friendly options
+      connectTimeoutMS: 3000,
+      maxIdleTimeMS: 30000,
+      bufferCommands: false,
+      bufferMaxEntries: 0
     });
+    
+    isConnected = true;
+    isConnecting = false;
     
     console.log(`✅ MongoDB Atlas connected successfully to: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
@@ -17,11 +42,12 @@ const connectDB = async () => {
     // Add connection event listeners for monitoring
     mongoose.connection.on('connected', () => {
       console.log('✅ Mongoose connected to MongoDB Atlas');
+      isConnected = true;
+    });
     });
     
     mongoose.connection.on('error', (err) => {
       console.error('❌ Mongoose connection error:', err);
-<<<<<<< HEAD
       // Don't exit on errors in production
       if (process.env.NODE_ENV !== 'production') {
         process.exit(1);
@@ -35,12 +61,10 @@ const connectDB = async () => {
     // Handle reconnection
     mongoose.connection.on('reconnected', () => {
       console.log('🔄 Mongoose reconnected to MongoDB Atlas');
-=======
     });
     
     mongoose.connection.on('disconnected', () => {
       console.log('⚠️ Mongoose disconnected from MongoDB');
->>>>>>> c7bdaca1ae0396dde76ab249534d16487fb103c3
     });
     
     // Graceful close on app termination
@@ -51,30 +75,13 @@ const connectDB = async () => {
     });
     
   } catch (error) {
-<<<<<<< HEAD
-    console.error("❌ MongoDB Atlas connection failed:", error.message);
-    console.error("🔍 Connection string provided:", process.env.MONGO_URI ? "Yes" : "No");
-    
-    // Enhanced error logging for Atlas
-    if (error.message.includes('authentication')) {
-      console.error("🔐 Authentication failed - check username/password");
-    } else if (error.message.includes('network')) {
-      console.error("🌐 Network error - check internet connection or firewall");
-    } else if (error.message.includes('timeout')) {
-      console.error("⏱️ Connection timeout - check Atlas cluster status");
-    }
-=======
     console.error("❌ MongoDB connection failed:", error.message);
     console.error("🔍 Connection string:", process.env.MONGO_URI ? "Provided" : "Missing");
->>>>>>> c7bdaca1ae0396dde76ab249534d16487fb103c3
     
     // In development, exit on connection failure
     // In production, let the app continue and show error in health check
     if (process.env.NODE_ENV !== 'production') {
-<<<<<<< HEAD
       console.log("💡 Make sure your MongoDB Atlas cluster is running and IP is whitelisted");
-=======
->>>>>>> c7bdaca1ae0396dde76ab249534d16487fb103c3
       process.exit(1);
     }
   }
